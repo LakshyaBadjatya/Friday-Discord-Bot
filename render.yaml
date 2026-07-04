@@ -1,9 +1,18 @@
+# ⚠️ This service uses Docker runtime on Render, NOT native Node.
+# The `buildCommand`/`startCommand` are ignored — edit Dockerfile instead.
+# Actual service name on Render: Friday-Discord-Bot
+# URL: https://friday-discord-bot-9u7u.onrender.com
 services:
   - type: web
-    name: discord-server-architect
-    env: node
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    name: friday-discord-bot
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    repo: https://github.com/LakshyaBadjatya/Friday-Discord-Bot
+    region: singapore
+    plan: free
+    branch: main
+    autoDeploy: yes
     envVars:
       - key: DISCORD_TOKEN
         sync: false
@@ -11,6 +20,8 @@ services:
         sync: false
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: 3000
       - key: NVIDIA_API_KEY
         sync: false
       - key: FIREBASE_API_KEY
