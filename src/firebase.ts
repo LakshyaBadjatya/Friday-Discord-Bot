@@ -5,6 +5,9 @@ import { config } from './config.js';
 if (!getApps().length) {
   if (config.FIREBASE_SERVICE_ACCOUNT) {
     const serviceAccount = JSON.parse(config.FIREBASE_SERVICE_ACCOUNT);
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
     initializeApp({ credential: cert(serviceAccount) });
   } else {
     const firebaseConfig = {
