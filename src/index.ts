@@ -39,23 +39,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
+async function startHealthServer() {
+  const app = express();
+  const port = config.PORT || process.env.PORT || 3000;
+  app.get('/', (req, res) => res.send('Discord Bot is running!'));
+  app.listen(port, () => {
+    log.info(`Health server listening on port ${port} for Render health checks.`);
+  });
+}
+
 async function bootstrap() {
   log.info('Starting Discord Server Architect Bot...');
+  
+  // Start health server first so Render health checks pass immediately
+  startHealthServer();
   
   try {
     await connectDatabase();
     await client.login(config.DISCORD_TOKEN);
-
-    // Dummy web server for Render health checks
-    const app = express();
-    const port = config.PORT || process.env.PORT || 3000;
-    app.get('/', (req, res) => res.send('Discord Bot is running!'));
-    app.listen(port, () => {
-      log.info(`Dummy web server listening on port ${port} for Render health checks.`);
-    });
   } catch (error) {
-    log.fatal({ error }, 'Failed to start bot');
-    process.exit(1);
+    log.fatal({ error }, 'Failed to start bot — health server still running');
   }
 }
 
