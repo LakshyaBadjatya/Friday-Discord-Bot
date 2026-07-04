@@ -1,13 +1,7 @@
-/**
- * @module database
- * @description Firebase Firestore database models and repositories that replace Prisma.
- */
-import { 
-  collection, doc, getDoc, getDocs, updateDoc, 
-  deleteDoc, query, where, orderBy, limit, Timestamp, addDoc
-} from 'firebase/firestore';
+import { Timestamp } from 'firebase-admin/firestore';
 import { db } from './firebase.js';
 import { createLogger } from './logger.js';
+
 export interface GuildSettings {
   id: string;
   guildId: string;
@@ -112,7 +106,6 @@ export interface ResponseCache {
 
 const log = createLogger('database');
 
-// ─── Collections ────────────────────────────────────────────────────────
 const COLLECTIONS = {
   GUILD_SETTINGS: 'guildSettings',
   ACTION_LOGS: 'actionLogs',
@@ -123,26 +116,30 @@ const COLLECTIONS = {
   RESPONSE_CACHE: 'responseCache',
 } as const;
 
-// ─── Prisma-Compatible Firebase Adapter ─────────────────────────────────
+function docToData<T>(snap: FirebaseFirestore.DocumentSnapshot): T | null {
+  if (!snap.exists) return null;
+  return { id: snap.id, ...snap.data() } as T;
+}
 
 export const prisma = {
   guildSettings: {
     async findUnique(args: { where: { guildId: string } }): Promise<GuildSettings | null> {
-      const q = query(collection(db, COLLECTIONS.GUILD_SETTINGS), where('guildId', '==', args.where.guildId));
-      const snapshot = await getDocs(q);
+      const snapshot = await db.collection(COLLECTIONS.GUILD_SETTINGS)
+        .where('guildId', '==', args.where.guildId)
+        .limit(1).get();
       if (snapshot.empty) return null;
-      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as GuildSettings;
+      return docToData<GuildSettings>(snapshot.docs[0]);
     },
     async upsert(args: { where: { guildId: string }, update: Partial<GuildSettings>, create: any }): Promise<GuildSettings> {
       const existing = await this.findUnique({ where: { guildId: args.where.guildId } });
       if (existing) {
-        await updateDoc(doc(db, COLLECTIONS.GUILD_SETTINGS, existing.id), {
+        await db.collection(COLLECTIONS.GUILD_SETTINGS).doc(existing.id).update({
           ...args.update,
           updatedAt: Timestamp.now(),
         });
         return { ...existing, ...args.update } as GuildSettings;
       } else {
-        const ref = await addDoc(collection(db, COLLECTIONS.GUILD_SETTINGS), {
+        const ref = await db.collection(COLLECTIONS.GUILD_SETTINGS).add({
           confirmationMode: true,
           dryRunMode: false,
           aiReviewerEnabled: true,
@@ -153,188 +150,181 @@ export const prisma = {
           createdAt: Timestamp.now(),
           updatedAt: Timestamp.now(),
         });
-        const snap = await getDoc(ref);
-        return { id: ref.id, ...snap.data() } as GuildSettings;
+        const snap = await ref.get();
+        return docToData<GuildSettings>(snap)!;
       }
     }
   },
 
   actionLog: {
     async create(args: { data: Omit<ActionLog, 'id' | 'createdAt'> }): Promise<ActionLog> {
-      const ref = await addDoc(collection(db, COLLECTIONS.ACTION_LOGS), {
+      const ref = await db.collection(COLLECTIONS.ACTION_LOGS).add({
         status: 'SUCCESS',
         ...args.data,
         createdAt: Timestamp.now(),
       });
-      const snap = await getDoc(ref);
-      return { id: ref.id, ...snap.data() } as ActionLog;
+      const snap = await ref.get();
+      return docToData<ActionLog>(snap)!;
     },
     async findMany(args: { where?: { guildId: string }, orderBy?: any, take?: number }): Promise<ActionLog[]> {
-      let q = query(collection(db, COLLECTIONS.ACTION_LOGS));
-      if (args.where?.guildId) q = query(q, where('guildId', '==', args.where.guildId));
-      if (args.orderBy?.createdAt) {
-        q = query(q, orderBy('createdAt', args.orderBy.createdAt));
-      }
-      if (args.take) q = query(q, limit(args.take));
-      
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ActionLog));
+      let query: FirebaseFirestore.Query = db.collection(COLLECTIONS.ACTION_LOGS);
+      if (args.where?.guildId) query = query.where('guildId', '==', args.where.guildId);
+      if (args.orderBy?.createdAt) query = query.orderBy('createdAt', args.orderBy.createdAt);
+      if (args.take) query = query.limit(args.take);
+      const snapshot = await query.get();
+      return snapshot.docs.map(d => docToData<ActionLog>(d)!);
     },
     async findUnique(args: { where: { id: string } }): Promise<ActionLog | null> {
-      const snap = await getDoc(doc(db, COLLECTIONS.ACTION_LOGS, args.where.id));
-      if (!snap.exists()) return null;
-      return { id: snap.id, ...snap.data() } as ActionLog;
+      const snap = await db.collection(COLLECTIONS.ACTION_LOGS).doc(args.where.id).get();
+      return docToData<ActionLog>(snap);
     }
   },
 
   undoSnapshot: {
     async create(args: { data: Omit<UndoSnapshot, 'id' | 'createdAt' | 'undone'> }): Promise<UndoSnapshot> {
-      const ref = await addDoc(collection(db, COLLECTIONS.UNDO_SNAPSHOTS), {
+      const ref = await db.collection(COLLECTIONS.UNDO_SNAPSHOTS).add({
         ...args.data,
         undone: false,
         createdAt: Timestamp.now(),
       });
-      const snap = await getDoc(ref);
-      return { id: ref.id, ...snap.data() } as UndoSnapshot;
+      const snap = await ref.get();
+      return docToData<UndoSnapshot>(snap)!;
     },
     async findUnique(args: { where: { id: string } }): Promise<UndoSnapshot | null> {
-      const snap = await getDoc(doc(db, COLLECTIONS.UNDO_SNAPSHOTS, args.where.id));
-      if (!snap.exists()) return null;
-      return { id: snap.id, ...snap.data() } as UndoSnapshot;
+      const snap = await db.collection(COLLECTIONS.UNDO_SNAPSHOTS).doc(args.where.id).get();
+      return docToData<UndoSnapshot>(snap);
     },
     async update(args: { where: { id: string }, data: Partial<UndoSnapshot> }): Promise<UndoSnapshot> {
-      const ref = doc(db, COLLECTIONS.UNDO_SNAPSHOTS, args.where.id);
-      await updateDoc(ref, args.data);
-      const snap = await getDoc(ref);
-      return { id: snap.id, ...snap.data() } as UndoSnapshot;
+      const ref = db.collection(COLLECTIONS.UNDO_SNAPSHOTS).doc(args.where.id);
+      await ref.update(args.data);
+      const snap = await ref.get();
+      return docToData<UndoSnapshot>(snap)!;
     },
     async findMany(args: { where?: any, orderBy?: any, take?: number }): Promise<UndoSnapshot[]> {
-      let q = query(collection(db, COLLECTIONS.UNDO_SNAPSHOTS));
-      if (args.where?.guildId) q = query(q, where('guildId', '==', args.where.guildId));
-      if (args.where?.actionLogId) q = query(q, where('actionLogId', '==', args.where.actionLogId));
-      if (args.where?.undone !== undefined) q = query(q, where('undone', '==', args.where.undone));
-      if (args.orderBy?.createdAt) q = query(q, orderBy('createdAt', args.orderBy.createdAt));
-      if (args.take) q = query(q, limit(args.take));
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as UndoSnapshot));
+      let query: FirebaseFirestore.Query = db.collection(COLLECTIONS.UNDO_SNAPSHOTS);
+      if (args.where?.guildId) query = query.where('guildId', '==', args.where.guildId);
+      if (args.where?.actionLogId) query = query.where('actionLogId', '==', args.where.actionLogId);
+      if (args.where?.undone !== undefined) query = query.where('undone', '==', args.where.undone);
+      if (args.orderBy?.createdAt) query = query.orderBy('createdAt', args.orderBy.createdAt);
+      if (args.take) query = query.limit(args.take);
+      const snapshot = await query.get();
+      return snapshot.docs.map(d => docToData<UndoSnapshot>(d)!);
     }
   },
 
   serverBackup: {
     async create(args: { data: Omit<ServerBackup, 'id' | 'createdAt'> }): Promise<ServerBackup> {
-      const ref = await addDoc(collection(db, COLLECTIONS.SERVER_BACKUPS), {
+      const ref = await db.collection(COLLECTIONS.SERVER_BACKUPS).add({
         ...args.data,
         createdAt: Timestamp.now(),
       });
-      const snap = await getDoc(ref);
-      return { id: ref.id, ...snap.data() } as ServerBackup;
+      const snap = await ref.get();
+      return docToData<ServerBackup>(snap)!;
     },
     async findMany(args: { where: { guildId: string }, orderBy?: any, take?: number }): Promise<ServerBackup[]> {
-      let q = query(collection(db, COLLECTIONS.SERVER_BACKUPS), where('guildId', '==', args.where.guildId));
-      if (args.orderBy?.createdAt) q = query(q, orderBy('createdAt', args.orderBy.createdAt));
-      if (args.take) q = query(q, limit(args.take));
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ServerBackup));
+      let query: FirebaseFirestore.Query = db.collection(COLLECTIONS.SERVER_BACKUPS)
+        .where('guildId', '==', args.where.guildId);
+      if (args.orderBy?.createdAt) query = query.orderBy('createdAt', args.orderBy.createdAt);
+      if (args.take) query = query.limit(args.take);
+      const snapshot = await query.get();
+      return snapshot.docs.map(d => docToData<ServerBackup>(d)!);
     },
     async findUnique(args: { where: { id: string } }): Promise<ServerBackup | null> {
-      const snap = await getDoc(doc(db, COLLECTIONS.SERVER_BACKUPS, args.where.id));
-      if (!snap.exists()) return null;
-      return { id: snap.id, ...snap.data() } as ServerBackup;
+      const snap = await db.collection(COLLECTIONS.SERVER_BACKUPS).doc(args.where.id).get();
+      return docToData<ServerBackup>(snap);
     }
   },
 
   responseCache: {
     async findUnique(args: { where: { cacheKey: string } }): Promise<ResponseCache | null> {
-      const q = query(collection(db, COLLECTIONS.RESPONSE_CACHE), where('cacheKey', '==', args.where.cacheKey));
-      const snapshot = await getDocs(q);
+      const snapshot = await db.collection(COLLECTIONS.RESPONSE_CACHE)
+        .where('cacheKey', '==', args.where.cacheKey)
+        .limit(1).get();
       if (snapshot.empty) return null;
-      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as ResponseCache;
+      return docToData<ResponseCache>(snapshot.docs[0]);
     },
     async create(args: { data: Omit<ResponseCache, 'id' | 'createdAt'> }): Promise<ResponseCache> {
-      const ref = await addDoc(collection(db, COLLECTIONS.RESPONSE_CACHE), {
+      const ref = await db.collection(COLLECTIONS.RESPONSE_CACHE).add({
         ...args.data,
         createdAt: Timestamp.now(),
       });
-      const snap = await getDoc(ref);
-      return { id: ref.id, ...snap.data() } as ResponseCache;
+      const snap = await ref.get();
+      return docToData<ResponseCache>(snap)!;
     },
     async upsert(args: { where: { cacheKey: string }, update: any, create: any }): Promise<ResponseCache> {
       const existing = await this.findUnique({ where: { cacheKey: args.where.cacheKey } });
       if (existing) {
-        await updateDoc(doc(db, COLLECTIONS.RESPONSE_CACHE, existing.id), args.update);
+        await db.collection(COLLECTIONS.RESPONSE_CACHE).doc(existing.id).update(args.update);
         return { ...existing, ...args.update } as ResponseCache;
       } else {
-        const ref = await addDoc(collection(db, COLLECTIONS.RESPONSE_CACHE), {
+        const ref = await db.collection(COLLECTIONS.RESPONSE_CACHE).add({
           ...args.create,
           createdAt: Timestamp.now(),
         });
-        const snap = await getDoc(ref);
-        return { id: ref.id, ...snap.data() } as ResponseCache;
+        const snap = await ref.get();
+        return docToData<ResponseCache>(snap)!;
       }
     }
   },
-  
+
   ticketPanel: {
     async create(args: { data: Omit<TicketPanel, 'id' | 'createdAt'> }): Promise<TicketPanel> {
-      const ref = await addDoc(collection(db, COLLECTIONS.TICKET_PANELS), {
+      const ref = await db.collection(COLLECTIONS.TICKET_PANELS).add({
         ...args.data,
         createdAt: Timestamp.now(),
       });
-      const snap = await getDoc(ref);
-      return { id: ref.id, ...snap.data() } as TicketPanel;
+      const snap = await ref.get();
+      return docToData<TicketPanel>(snap)!;
     },
     async findUnique(args: { where: { messageId: string } }): Promise<TicketPanel | null> {
-      const q = query(collection(db, COLLECTIONS.TICKET_PANELS), where('messageId', '==', args.where.messageId));
-      const snapshot = await getDocs(q);
+      const snapshot = await db.collection(COLLECTIONS.TICKET_PANELS)
+        .where('messageId', '==', args.where.messageId)
+        .limit(1).get();
       if (snapshot.empty) return null;
-      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as TicketPanel;
+      return docToData<TicketPanel>(snapshot.docs[0]);
     }
   },
 
   ticket: {
     async create(args: { data: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt'> }): Promise<Ticket> {
-      const ref = await addDoc(collection(db, COLLECTIONS.TICKETS), {
+      const ref = await db.collection(COLLECTIONS.TICKETS).add({
         ...args.data,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
-      const snap = await getDoc(ref);
-      return { id: ref.id, ...snap.data() } as Ticket;
+      const snap = await ref.get();
+      return docToData<Ticket>(snap)!;
     },
     async findUnique(args: { where: { channelId: string } }): Promise<Ticket | null> {
-      const q = query(collection(db, COLLECTIONS.TICKETS), where('channelId', '==', args.where.channelId));
-      const snapshot = await getDocs(q);
+      const snapshot = await db.collection(COLLECTIONS.TICKETS)
+        .where('channelId', '==', args.where.channelId)
+        .limit(1).get();
       if (snapshot.empty) return null;
-      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Ticket;
+      return docToData<Ticket>(snapshot.docs[0]);
     },
     async findFirst(args: { where: any, orderBy?: any }): Promise<Ticket | null> {
-      let q = query(collection(db, COLLECTIONS.TICKETS));
-      if (args.where?.channelId) q = query(q, where('channelId', '==', args.where.channelId));
-      if (args.where?.status) q = query(q, where('status', '==', args.where.status));
-      if (args.orderBy?.createdAt) q = query(q, orderBy('createdAt', args.orderBy.createdAt));
-      q = query(q, limit(1));
-      const snapshot = await getDocs(q);
+      let query: FirebaseFirestore.Query = db.collection(COLLECTIONS.TICKETS);
+      if (args.where?.channelId) query = query.where('channelId', '==', args.where.channelId);
+      if (args.where?.status) query = query.where('status', '==', args.where.status);
+      if (args.orderBy?.createdAt) query = query.orderBy('createdAt', args.orderBy.createdAt);
+      query = query.limit(1);
+      const snapshot = await query.get();
       if (snapshot.empty) return null;
-      return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Ticket;
+      return docToData<Ticket>(snapshot.docs[0]);
     },
     async update(args: { where: { id: string }, data: Partial<Ticket> }): Promise<Ticket> {
-      const ref = doc(db, COLLECTIONS.TICKETS, args.where.id);
-      await updateDoc(ref, {
-        ...args.data,
-        updatedAt: Timestamp.now(),
-      });
-      const snap = await getDoc(ref);
-      return { id: snap.id, ...snap.data() } as Ticket;
+      const ref = db.collection(COLLECTIONS.TICKETS).doc(args.where.id);
+      await ref.update({ ...args.data, updatedAt: Timestamp.now() });
+      const snap = await ref.get();
+      return docToData<Ticket>(snap)!;
     }
   }
 };
 
-/** Connect to the database. */
 export async function connectDatabase(): Promise<void> {
-  log.info('Firebase database connected');
+  log.info('Firebase database connected (admin SDK)');
 }
 
-/** Disconnect from the database. */
 export async function disconnectDatabase(): Promise<void> {
   log.info('Firebase database disconnected');
 }

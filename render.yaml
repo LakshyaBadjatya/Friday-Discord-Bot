@@ -1,7 +1,3 @@
-# ⚠️ This service uses Docker runtime on Render, NOT native Node.
-# The `buildCommand`/`startCommand` are ignored — edit Dockerfile instead.
-# Actual service name on Render: Friday-Discord-Bot
-# URL: https://friday-discord-bot-9u7u.onrender.com
 services:
   - type: web
     name: friday-discord-bot
@@ -40,3 +36,5 @@ services:
         sync: false
       - key: RENDER_API_KEY
         sync: false
+
+

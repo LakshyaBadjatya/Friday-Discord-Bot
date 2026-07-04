@@ -35,6 +35,7 @@ const envSchema = z.object({
   FIREBASE_MESSAGING_SENDER_ID: z.string().min(1),
   FIREBASE_APP_ID: z.string().min(1),
   FIREBASE_MEASUREMENT_ID: z.string().optional(),
+  FIREBASE_SERVICE_ACCOUNT: z.string().default(''),
 
   // Database (legacy fallback)
   DATABASE_URL: z.string().default('file:./data/bot.db'),

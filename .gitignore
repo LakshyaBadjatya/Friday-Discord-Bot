@@ -8,3 +8,6 @@ coverage/
 .turbo/
 logs/
 .DS_Store
+
+# Website — standalone Vercel project (separate repo)
+web/
