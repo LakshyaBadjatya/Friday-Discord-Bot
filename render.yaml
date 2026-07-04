@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: discord-server-architect
+    env: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: RENDER_API_KEY
+        value: YOUR_RENDER_API_KEY
+      - key: NVIDIA_NIM_API_KEY
+        value: YOUR_NVIDIA_API_KEY
